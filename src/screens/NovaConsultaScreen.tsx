@@ -1,416 +1,496 @@
 /**
- * Tela de Nova Consulta (agendamento).
- *
- * Fluxo completo pedido na aula de 05/05/2026:
- * especialidade (modal) -> médico (filtrado pela especialidade) ->
- * data (máscara DD/MM/AAAA) -> horário (grid de 3 colunas) -> observações.
- *
- * Regras principais:
- * - Ao trocar a especialidade, o médico selecionado é limpo.
- * - Validação dos campos obrigatórios.
- * - Persistência via criarConsulta.
- * - Conversão da data de DD/MM/AAAA para AAAA-MM-DD antes de salvar.
+ * NovaConsultaScreen - Formulário de Agendamento de Consulta
+ * Permite ao paciente agendar uma nova consulta médica.
  */
 
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import {
-  Alert,
-  FlatList,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
   View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  TextInput,
+  ScrollView,
+  Modal,
+  FlatList,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
+import { useAuth } from '../contexts/AuthContext';
+import consultasService from '../services/consultasService';
+import { medicosSelectMock } from '../services/mockData';
 
-import { useAuth } from '../context/AuthContext';
-import type { ConsultasStackParamList } from '../navigation/types';
-import { criarConsulta } from '../services/consultasService';
-import {
-  ESPECIALIDADES,
-  medicosPorEspecialidade,
-  type Especialidade,
-  type Medico,
-  HORARIOS,
-} from '../services/dados';
-import { cores } from '../theme';
-import { dataParaISO, maskData } from '../utils/masks';
-import { validarData } from '../utils/validation';
+// ───────── Tipos locais ─────────
 
-type Navegacao = NativeStackNavigationProp<
-  ConsultasStackParamList,
-  'NovaConsulta'
->;
+type Especialidade =
+  | 'Cardiologia'
+  | 'Dermatologia'
+  | 'Ortopedia'
+  | 'Pediatria'
+  | 'Psiquiatria'
+  | 'Clínica Geral';
 
-export default function NovaConsultaScreen() {
-  const navigation = useNavigation<Navegacao>();
+type Medico = {
+  id: number;
+  nome: string;
+  especialidade: Especialidade;
+};
+
+// ───────── Dados mock ─────────
+
+const ESPECIALIDADES: Especialidade[] = [
+  'Cardiologia',
+  'Clínica Geral',
+  'Dermatologia',
+  'Ortopedia',
+  'Pediatria',
+  'Psiquiatria',
+];
+
+const MEDICOS: Medico[] = medicosSelectMock as Medico[];
+
+const HORARIOS_DISPONIVEIS = [
+  '08:00',
+  '08:30',
+  '09:00',
+  '09:30',
+  '10:00',
+  '10:30',
+  '11:00',
+  '14:00',
+  '14:30',
+  '15:00',
+  '15:30',
+  '16:00',
+  '16:30',
+];
+
+// ───────── Máscara de data ─────────
+
+function aplicarMascaraData(valor: string): string {
+  const numeros = valor.replace(/\D/g, '').slice(0, 8);
+  if (numeros.length <= 2) return numeros;
+  if (numeros.length <= 4) return `${numeros.slice(0, 2)}/${numeros.slice(2)}`;
+  return `${numeros.slice(0, 2)}/${numeros.slice(2, 4)}/${numeros.slice(4)}`;
+}
+
+// ─────────────────────────────────
+
+type NovaConsultaScreenProps = {
+  navigation: any;
+};
+
+export default function NovaConsultaScreen({
+  navigation,
+}: NovaConsultaScreenProps) {
   const { usuario } = useAuth();
 
   const [especialidade, setEspecialidade] = useState<Especialidade | null>(null);
   const [medico, setMedico] = useState<Medico | null>(null);
   const [data, setData] = useState('');
-  const [horario, setHorario] = useState('');
+  const [horario, setHorario] = useState<string | null>(null);
   const [observacoes, setObservacoes] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const [modalEspecialidade, setModalEspecialidade] = useState(false);
   const [modalMedico, setModalMedico] = useState(false);
-  const [salvando, setSalvando] = useState(false);
+  const [modalHorario, setModalHorario] = useState(false);
 
-  // Médicos disponíveis dependem da especialidade escolhida.
-  const medicosDisponiveis = useMemo(
-    () => (especialidade ? medicosPorEspecialidade(especialidade.id) : []),
-    [especialidade],
-  );
+  const medicosFiltrados = especialidade
+    ? MEDICOS.filter((m) => m.especialidade === especialidade)
+    : MEDICOS;
 
-  function selecionarEspecialidade(item: Especialidade) {
-    setEspecialidade(item);
-    // Ao trocar a especialidade, o médico anterior deixa de fazer sentido.
-    setMedico(null);
+  function selecionarEspecialidade(esp: Especialidade) {
+    setEspecialidade(esp);
+    setMedico(null); // Reseta médico ao trocar especialidade
     setModalEspecialidade(false);
   }
 
-  function selecionarMedico(item: Medico) {
-    setMedico(item);
-    setModalMedico(false);
-  }
-
-  function abrirModalMedico() {
+  async function handleAgendar() {
     if (!especialidade) {
-      Alert.alert('Selecione a especialidade', 'Escolha a especialidade primeiro.');
+      Alert.alert('Atenção', 'Selecione a especialidade.');
       return;
-    }
-    setModalMedico(true);
-  }
-
-  async function handleSalvar() {
-    const problemas: string[] = [];
-
-    if (!especialidade) {
-      problemas.push('Selecione a especialidade.');
     }
     if (!medico) {
-      problemas.push('Selecione o médico.');
+      Alert.alert('Atenção', 'Selecione o médico.');
+      return;
     }
-    if (!validarData(data)) {
-      problemas.push('Informe uma data válida (DD/MM/AAAA).');
+    if (data.replace(/\D/g, '').length !== 8) {
+      Alert.alert('Atenção', 'Informe a data no formato DD/MM/AAAA.');
+      return;
     }
     if (!horario) {
-      problemas.push('Selecione um horário.');
+      Alert.alert('Atenção', 'Selecione o horário.');
+      return;
     }
-
-    if (problemas.length > 0) {
-      Alert.alert('Campos obrigatórios', problemas.join('\n'));
+    if (!usuario) {
+      Alert.alert('Erro', 'Usuário não identificado. Faça login novamente.');
       return;
     }
 
+    // Converte data DD/MM/AAAA -> AAAA-MM-DD (padrão ISO)
+    const [dia, mes, ano] = data.split('/');
+    const dataISO = `${ano}-${mes}-${dia}`;
+
+    setLoading(true);
     try {
-      setSalvando(true);
-      await criarConsulta({
-        usuarioId: usuario?.id ?? '',
-        especialidade: especialidade!.nome,
-        medico: medico!.nome,
-        // Converte DD/MM/AAAA -> AAAA-MM-DD antes de salvar.
-        data: dataParaISO(data),
-        horario,
-        observacoes: observacoes.trim() ? observacoes.trim() : undefined,
+      await consultasService.criarConsulta({
+        pacienteId: usuario.id,
+        pacienteNome: usuario.nome,
+        medicoId: medico.id,
+        medicoNome: medico.nome,
+        especialidade: especialidade as any,
+        usuarioId: usuario.id,
+        data: dataISO,
+        horario: horario,
+        status: 'agendada',
+        observacoes: observacoes.trim() || undefined,
       });
 
-      Alert.alert('Consulta agendada!', 'Sua consulta foi registrada com sucesso.', [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
-    } catch (erro) {
-      Alert.alert('Erro', 'Não foi possível salvar a consulta. Tente novamente.');
+      Alert.alert(
+        'Consulta Agendada!',
+        `Sua consulta com ${medico.nome} foi agendada para ${data} às ${horario}.`,
+        [{ text: 'OK', onPress: () => navigation.goBack() }],
+      );
+    } catch (error: any) {
+      Alert.alert('Erro', error.message || 'Não foi possível agendar a consulta.');
     } finally {
-      setSalvando(false);
+      setLoading(false);
     }
   }
 
   return (
-    <ScrollView
-      style={styles.flex}
-      contentContainerStyle={styles.container}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Text style={styles.titulo}>Nova Consulta</Text>
-      <Text style={styles.subtitulo}>Agende uma nova consulta médica.</Text>
-
-      {/* Especialidade */}
-      <Text style={styles.label}>Especialidade</Text>
-      <TouchableOpacity
-        style={styles.seletor}
-        onPress={() => setModalEspecialidade(true)}
-      >
-        <Text style={especialidade ? styles.seletorTexto : styles.seletorPlaceholder}>
-          {especialidade ? especialidade.nome : 'Selecione a especialidade'}
+    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitulo}>Agendar Consulta</Text>
+        <Text style={styles.headerSubtitulo}>
+          Preencha os dados para agendar sua consulta
         </Text>
-        <Text style={styles.seletorSeta}>▾</Text>
-      </TouchableOpacity>
-
-      {/* Médico (filtrado pela especialidade) */}
-      <Text style={styles.label}>Médico</Text>
-      <TouchableOpacity
-        style={[styles.seletor, !especialidade ? styles.seletorDesabilitado : null]}
-        onPress={abrirModalMedico}
-      >
-        <Text style={medico ? styles.seletorTexto : styles.seletorPlaceholder}>
-          {medico ? medico.nome : 'Selecione o médico'}
-        </Text>
-        <Text style={styles.seletorSeta}>▾</Text>
-      </TouchableOpacity>
-
-      {/* Data */}
-      <Text style={styles.label}>Data</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="DD/MM/AAAA"
-        placeholderTextColor={cores.textoSecundario}
-        value={data}
-        onChangeText={(texto) => setData(maskData(texto))}
-        keyboardType="numeric"
-        maxLength={10}
-      />
-
-      {/* Horário em grid de 3 colunas */}
-      <Text style={styles.label}>Horário</Text>
-      <View style={styles.grid}>
-        {HORARIOS.map((hora) => {
-          const selecionado = hora === horario;
-          return (
-            <TouchableOpacity
-              key={hora}
-              style={[styles.horario, selecionado ? styles.horarioSelecionado : null]}
-              onPress={() => setHorario(hora)}
-            >
-              <Text
-                style={[
-                  styles.horarioTexto,
-                  selecionado ? styles.horarioTextoSelecionado : null,
-                ]}
-              >
-                {hora}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
       </View>
 
-      {/* Observações (opcional) */}
-      <Text style={styles.label}>Observações (opcional)</Text>
-      <TextInput
-        style={[styles.input, styles.textarea]}
-        placeholder="Ex.: Retorno, encaminhamento, sintomas..."
-        placeholderTextColor={cores.textoSecundario}
-        value={observacoes}
-        onChangeText={setObservacoes}
-        multiline
-        numberOfLines={4}
-        textAlignVertical="top"
-      />
+      <View style={styles.form}>
+        {/* ── Especialidade ── */}
+        <Text style={styles.label}>Especialidade *</Text>
+        <TouchableOpacity
+          style={styles.selector}
+          onPress={() => setModalEspecialidade(true)}
+        >
+          <Text
+            style={especialidade ? styles.selectorTexto : styles.selectorPlaceholder}
+          >
+            {especialidade ?? 'Selecione a especialidade'}
+          </Text>
+          <Text style={styles.selectorIcone}>▼</Text>
+        </TouchableOpacity>
 
-      <TouchableOpacity
-        style={[styles.botao, salvando ? styles.botaoDesabilitado : null]}
-        onPress={handleSalvar}
-        disabled={salvando}
-      >
-        <Text style={styles.botaoTexto}>
-          {salvando ? 'Salvando...' : 'Agendar consulta'}
-        </Text>
-      </TouchableOpacity>
+        {/* ── Médico ── */}
+        <Text style={styles.label}>Médico *</Text>
+        <TouchableOpacity
+          style={[styles.selector, !especialidade && styles.selectorDesabilitado]}
+          onPress={() => especialidade && setModalMedico(true)}
+        >
+          <Text style={medico ? styles.selectorTexto : styles.selectorPlaceholder}>
+            {medico
+              ? medico.nome
+              : especialidade
+              ? 'Selecione o médico'
+              : 'Selecione a especialidade primeiro'}
+          </Text>
+          <Text style={styles.selectorIcone}>▼</Text>
+        </TouchableOpacity>
 
-      {/* Modal de especialidade */}
-      <ModalSelecao
-        visivel={modalEspecialidade}
-        titulo="Escolha a especialidade"
-        dados={ESPECIALIDADES}
-        onFechar={() => setModalEspecialidade(false)}
-        onSelecionar={selecionarEspecialidade}
-        rotulo={(item) => item.nome}
-      />
+        {/* ── Data ── */}
+        <Text style={styles.label}>Data *</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="DD/MM/AAAA"
+          placeholderTextColor="#aaa"
+          value={data}
+          onChangeText={(texto) => setData(aplicarMascaraData(texto))}
+          keyboardType="numeric"
+          maxLength={10}
+        />
 
-      {/* Modal de médico */}
-      <ModalSelecao
-        visivel={modalMedico}
-        titulo="Escolha o médico"
-        dados={medicosDisponiveis}
-        onFechar={() => setModalMedico(false)}
-        onSelecionar={selecionarMedico}
-        rotulo={(item) => item.nome}
-      />
+        {/* ── Horário ── */}
+        <Text style={styles.label}>Horário *</Text>
+        <TouchableOpacity
+          style={styles.selector}
+          onPress={() => setModalHorario(true)}
+        >
+          <Text style={horario ? styles.selectorTexto : styles.selectorPlaceholder}>
+            {horario ?? 'Selecione o horário'}
+          </Text>
+          <Text style={styles.selectorIcone}>▼</Text>
+        </TouchableOpacity>
+
+        {/* ── Observações ── */}
+        <Text style={styles.label}>Observações (opcional)</Text>
+        <TextInput
+          style={[styles.input, styles.inputMultiline]}
+          placeholder="Descreva seus sintomas ou motivo da consulta..."
+          placeholderTextColor="#aaa"
+          value={observacoes}
+          onChangeText={setObservacoes}
+          multiline
+          numberOfLines={4}
+          textAlignVertical="top"
+        />
+
+        {/* ── Botões ── */}
+        <TouchableOpacity
+          style={[styles.botaoAgendar, loading && styles.botaoDesabilitado]}
+          onPress={handleAgendar}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.botaoAgendarTexto}>Confirmar Agendamento</Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.botaoCancelar}
+          onPress={() => navigation.goBack()}
+          disabled={loading}
+        >
+          <Text style={styles.botaoCancelarTexto}>Cancelar</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* ── Modal Especialidade ── */}
+      <Modal visible={modalEspecialidade} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitulo}>Selecione a Especialidade</Text>
+            <FlatList
+              data={ESPECIALIDADES}
+              keyExtractor={(item) => item}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.modalItem,
+                    especialidade === item && styles.modalItemSelecionado,
+                  ]}
+                  onPress={() => selecionarEspecialidade(item)}
+                >
+                  <Text
+                    style={[
+                      styles.modalItemTexto,
+                      especialidade === item && styles.modalItemTextoSelecionado,
+                    ]}
+                  >
+                    {item}
+                  </Text>
+                  {especialidade === item && <Text>✓</Text>}
+                </TouchableOpacity>
+              )}
+            />
+            <TouchableOpacity
+              style={styles.modalFechar}
+              onPress={() => setModalEspecialidade(false)}
+            >
+              <Text style={styles.modalFecharTexto}>Fechar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Modal Médico ── */}
+      <Modal visible={modalMedico} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitulo}>Selecione o Médico</Text>
+            <FlatList
+              data={medicosFiltrados}
+              keyExtractor={(item) => item.id.toString()}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.modalItem,
+                    medico?.id === item.id && styles.modalItemSelecionado,
+                  ]}
+                  onPress={() => {
+                    setMedico(item);
+                    setModalMedico(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.modalItemTexto,
+                      medico?.id === item.id && styles.modalItemTextoSelecionado,
+                    ]}
+                  >
+                    {item.nome}
+                  </Text>
+                  {medico?.id === item.id && <Text>✓</Text>}
+                </TouchableOpacity>
+              )}
+            />
+            <TouchableOpacity
+              style={styles.modalFechar}
+              onPress={() => setModalMedico(false)}
+            >
+              <Text style={styles.modalFecharTexto}>Fechar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Modal Horário ── */}
+      <Modal visible={modalHorario} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitulo}>Selecione o Horário</Text>
+            <FlatList
+              data={HORARIOS_DISPONIVEIS}
+              keyExtractor={(item) => item}
+              numColumns={3}
+              columnWrapperStyle={styles.horariosGrid}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.horarioItem,
+                    horario === item && styles.horarioItemSelecionado,
+                  ]}
+                  onPress={() => {
+                    setHorario(item);
+                    setModalHorario(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.horarioItemTexto,
+                      horario === item && styles.horarioItemTextoSelecionado,
+                    ]}
+                  >
+                    {item}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            />
+            <TouchableOpacity
+              style={styles.modalFechar}
+              onPress={() => setModalHorario(false)}
+            >
+              <Text style={styles.modalFecharTexto}>Fechar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
 
-/** Modal genérico de seleção reutilizado por especialidade e médico. */
-interface ModalSelecaoProps<T> {
-  visivel: boolean;
-  titulo: string;
-  dados: T[];
-  onFechar: () => void;
-  onSelecionar: (item: T) => void;
-  rotulo: (item: T) => string;
-}
-
-function ModalSelecao<T extends { id: string }>({
-  visivel,
-  titulo,
-  dados,
-  onFechar,
-  onSelecionar,
-  rotulo,
-}: ModalSelecaoProps<T>) {
-  return (
-    <Modal
-      visible={visivel}
-      transparent
-      animationType="slide"
-      onRequestClose={onFechar}
-    >
-      <View style={styles.modalFundo}>
-        <View style={styles.modalConteudo}>
-          <Text style={styles.modalTitulo}>{titulo}</Text>
-          <FlatList
-            data={dados}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.modalItem}
-                onPress={() => onSelecionar(item)}
-              >
-                <Text style={styles.modalItemTexto}>{rotulo(item)}</Text>
-              </TouchableOpacity>
-            )}
-            ListEmptyComponent={
-              <Text style={styles.modalVazio}>Nenhuma opção disponível.</Text>
-            }
-          />
-          <TouchableOpacity style={styles.modalFechar} onPress={onFechar}>
-            <Text style={styles.modalFecharTexto}>Fechar</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
 const styles = StyleSheet.create({
-  flex: {
-    flex: 1,
-    backgroundColor: cores.fundo,
-  },
   container: {
-    padding: 20,
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  scrollContent: {
     paddingBottom: 40,
   },
-  titulo: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: cores.texto,
+  header: {
+    backgroundColor: '#79059C',
+    padding: 20,
+    paddingTop: 24,
   },
-  subtitulo: {
+  headerTitulo: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  headerSubtitulo: {
     fontSize: 14,
-    color: cores.textoSecundario,
+    color: '#fff',
+    opacity: 0.9,
     marginTop: 4,
-    marginBottom: 8,
+  },
+  form: {
+    padding: 16,
   },
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: cores.texto,
+    color: '#333',
     marginTop: 16,
     marginBottom: 6,
   },
-  seletor: {
-    backgroundColor: cores.card,
-    borderWidth: 1,
-    borderColor: cores.borda,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  seletorDesabilitado: {
-    backgroundColor: '#e2e8f0',
-  },
-  seletorTexto: {
-    fontSize: 16,
-    color: cores.texto,
-  },
-  seletorPlaceholder: {
-    fontSize: 16,
-    color: cores.textoSecundario,
-  },
-  seletorSeta: {
-    fontSize: 16,
-    color: cores.textoSecundario,
-  },
   input: {
-    backgroundColor: cores.card,
+    backgroundColor: '#fff',
     borderWidth: 1,
-    borderColor: cores.borda,
+    borderColor: '#ddd',
     borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     fontSize: 16,
-    color: cores.texto,
+    color: '#333',
   },
-  textarea: {
-    minHeight: 96,
+  inputMultiline: {
+    height: 100,
+    paddingTop: 14,
   },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  horario: {
-    width: '31.5%',
-    backgroundColor: cores.card,
+  selector: {
+    backgroundColor: '#fff',
     borderWidth: 1,
-    borderColor: cores.borda,
+    borderColor: '#ddd',
     borderRadius: 10,
-    paddingVertical: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
   },
-  horarioSelecionado: {
-    backgroundColor: cores.primaria,
-    borderColor: cores.primaria,
+  selectorDesabilitado: {
+    backgroundColor: '#f0f0f0',
+    borderColor: '#e0e0e0',
   },
-  horarioTexto: {
-    fontSize: 15,
-    color: cores.texto,
+  selectorTexto: {
+    fontSize: 16,
+    color: '#333',
+    flex: 1,
   },
-  horarioTextoSelecionado: {
-    color: cores.branco,
-    fontWeight: '700',
+  selectorPlaceholder: {
+    fontSize: 16,
+    color: '#aaa',
+    flex: 1,
   },
-  botao: {
-    backgroundColor: cores.primaria,
-    borderRadius: 10,
+  selectorIcone: {
+    fontSize: 12,
+    color: '#79059C',
+    marginLeft: 8,
+  },
+  botaoAgendar: {
+    backgroundColor: '#79059C',
     paddingVertical: 16,
+    borderRadius: 12,
     alignItems: 'center',
     marginTop: 24,
   },
   botaoDesabilitado: {
     opacity: 0.6,
   },
-  botaoTexto: {
-    color: cores.branco,
+  botaoAgendarTexto: {
+    color: '#fff',
+    fontWeight: 'bold',
     fontSize: 16,
-    fontWeight: '700',
   },
-  modalFundo: {
+  botaoCancelar: {
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  botaoCancelarTexto: {
+    color: '#666',
+    fontSize: 16,
+  },
+  modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
   },
-  modalConteudo: {
-    backgroundColor: cores.card,
+  modalContainer: {
+    backgroundColor: '#fff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
@@ -418,33 +498,66 @@ const styles = StyleSheet.create({
   },
   modalTitulo: {
     fontSize: 18,
-    fontWeight: '700',
-    color: cores.texto,
-    marginBottom: 12,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 16,
   },
   modalItem: {
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: cores.fundo,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    marginBottom: 4,
+  },
+  modalItemSelecionado: {
+    backgroundColor: '#f3e5f5',
   },
   modalItemTexto: {
     fontSize: 16,
-    color: cores.texto,
+    color: '#333',
   },
-  modalVazio: {
-    fontSize: 14,
-    color: cores.textoSecundario,
-    paddingVertical: 16,
-    textAlign: 'center',
+  modalItemTextoSelecionado: {
+    color: '#79059C',
+    fontWeight: '600',
   },
   modalFechar: {
-    marginTop: 12,
+    marginTop: 16,
+    backgroundColor: '#79059C',
     paddingVertical: 14,
+    borderRadius: 10,
     alignItems: 'center',
   },
   modalFecharTexto: {
+    color: '#fff',
+    fontWeight: 'bold',
     fontSize: 16,
+  },
+  // ── Horários ──
+  horariosGrid: {
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  horarioItem: {
+    flex: 1,
+    marginHorizontal: 4,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    alignItems: 'center',
+  },
+  horarioItemSelecionado: {
+    backgroundColor: '#79059C',
+    borderColor: '#79059C',
+  },
+  horarioItemTexto: {
+    fontSize: 15,
+    color: '#333',
+  },
+  horarioItemTextoSelecionado: {
+    color: '#fff',
     fontWeight: '600',
-    color: cores.primaria,
   },
 });

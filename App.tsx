@@ -1,25 +1,36 @@
 /**
  * Ponto de entrada da aplicação.
  *
- * Envolve a navegação com o provedor de autenticação e a área segura.
+ * - Inicializa os dados simulados (usuários e consultas) no AsyncStorage.
+ * - Envolve a navegação com o provedor de autenticação e a área segura.
+ *
+ * A navegação por perfil (admin/medico/paciente) e o seu NavigationContainer
+ * ficam em `src/navigation`.
  */
 
-import { NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { AuthProvider } from './src/context/AuthContext';
-import AppNavigator from './src/navigation/AppNavigator';
+import { AuthProvider } from './src/contexts/AuthContext';
+import Navigation from './src/navigation';
+import { inicializarUsuarios } from './src/services/authService';
+import { inicializarConsultas } from './src/services/consultasService';
 
 export default function App() {
+  useEffect(() => {
+    async function inicializar() {
+      await inicializarUsuarios();
+      await inicializarConsultas();
+    }
+    inicializar();
+  }, []);
+
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <NavigationContainer>
-          <StatusBar style="light" />
-          <AppNavigator />
-        </NavigationContainer>
+        <StatusBar style="light" />
+        <Navigation />
       </AuthProvider>
     </SafeAreaProvider>
   );

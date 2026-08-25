@@ -1,115 +1,220 @@
 /**
- * Tela de Lista de Consultas.
- *
- * Melhoria da aula de 05/05/2026: a lista é recarregada automaticamente
- * sempre que a tela ganha foco (useFocusEffect), e não apenas na montagem.
- * Assim, ao agendar uma nova consulta e voltar, a lista já aparece atualizada
- * sem precisar reiniciar o app.
- *
- * O carregamento usa useCallback com dependência de `usuario?.id`.
+ * ConsultasListScreen - Lista de Consultas
+ * Exibe consultas filtradas por perfil:
+ * - Admin: todas
+ * - Paciente: só as dele
+ * - Médico: só as da sua agenda (medicoId)
  */
 
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useCallback, useState } from 'react';
+import React, { useState, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
-  ActivityIndicator,
-  FlatList,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
   View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  RefreshControl,
+  Alert,
 } from 'react-native';
+import { useAuth } from '../contexts/AuthContext';
+import consultasService from '../services/consultasService';
+import { Consulta } from '../interfaces/consulta';
+import { StatusConsulta } from '../types/statusConsulta';
+import { ConsultaCard, Loading, EmptyState } from '../components';
 
-import { useAuth } from '../context/AuthContext';
-import type { ConsultasStackParamList } from '../navigation/types';
-import { listarConsultas, type Consulta } from '../services/consultasService';
-import { cores } from '../theme';
-import { dataParaBR } from '../utils/masks';
+type ConsultasListScreenProps = {
+  navigation: any;
+};
 
-type Navegacao = NativeStackNavigationProp<
-  ConsultasStackParamList,
-  'ConsultasList'
->;
-
-export default function ConsultasListScreen() {
-  const navigation = useNavigation<Navegacao>();
-  const { usuario } = useAuth();
-
+export default function ConsultasListScreen({
+  navigation,
+}: ConsultasListScreenProps) {
+  const { usuario, isAdmin, isMedico } = useAuth();
   const [consultas, setConsultas] = useState<Consulta[]>([]);
-  const [carregando, setCarregando] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [filtroAtivo, setFiltroAtivo] = useState<StatusConsulta | 'todas'>('todas');
 
-  // Carrega as consultas do usuário logado. Depende de usuario?.id: se o
-  // usuário mudar, a função é recriada e o efeito recarrega os dados corretos.
-  const carregarConsultas = useCallback(async () => {
-    try {
-      setCarregando(true);
-      const lista = await listarConsultas(usuario?.id);
-      setConsultas(lista);
-    } finally {
-      setCarregando(false);
-    }
-  }, [usuario?.id]);
-
-  // useFocusEffect: dispara toda vez que a tela ganha foco (inclusive ao
-  // voltar da tela de Nova Consulta), mantendo a lista sempre atualizada.
   useFocusEffect(
     useCallback(() => {
       carregarConsultas();
-    }, [carregarConsultas]),
+    }, [usuario?.id, usuario?.medicoId]),
   );
 
-  function renderItem({ item }: { item: Consulta }) {
-    return (
-      <View style={styles.card}>
-        <View style={styles.cardCabecalho}>
-          <Text style={styles.cardEspecialidade}>{item.especialidade}</Text>
-          <Text style={styles.cardHorario}>{item.horario}</Text>
-        </View>
-        <Text style={styles.cardMedico}>{item.medico}</Text>
-        <Text style={styles.cardData}>{dataParaBR(item.data)}</Text>
-        {item.observacoes ? (
-          <Text style={styles.cardObservacoes}>{item.observacoes}</Text>
-        ) : null}
-      </View>
-    );
+  async function carregarConsultas() {
+    setLoading(true);
+    try {
+      const dados = await consultasService.listarConsultas(
+        usuario?.id,
+        isAdmin(),
+        isMedico(),
+        usuario?.medicoId,
+      );
+      setConsultas(dados);
+    } catch (error) {
+      console.error('Erro ao carregar consultas:', error);
+      Alert.alert('Erro', 'Não foi possível carregar as consultas');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onRefresh() {
+    setRefreshing(true);
+    await carregarConsultas();
+    setRefreshing(false);
+  }
+
+  async function handleConfirmar(id: number) {
+    try {
+      await consultasService.confirmarConsulta(
+        id,
+        usuario?.id,
+        isAdmin(),
+        isMedico(),
+        usuario?.medicoId,
+      );
+      Alert.alert('Sucesso', 'Consulta confirmada!');
+      carregarConsultas();
+    } catch (error: any) {
+      Alert.alert('Erro', error.message || 'Erro ao confirmar consulta');
+    }
+  }
+
+  async function handleCancelar(id: number) {
+    Alert.alert('Cancelar Consulta', 'Deseja realmente cancelar esta consulta?', [
+      { text: 'Não', style: 'cancel' },
+      {
+        text: 'Sim, cancelar',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await consultasService.cancelarConsulta(
+              id,
+              usuario?.id,
+              isAdmin(),
+              isMedico(),
+              usuario?.medicoId,
+            );
+            Alert.alert('Sucesso', 'Consulta cancelada');
+            carregarConsultas();
+          } catch (error: any) {
+            Alert.alert('Erro', error.message || 'Erro ao cancelar consulta');
+          }
+        },
+      },
+    ]);
+  }
+
+  function handleDetalhes(id: number) {
+    navigation.navigate('ConsultaDetalhes', { consultaId: id });
+  }
+
+  const consultasFiltradas = (
+    filtroAtivo === 'todas'
+      ? consultas
+      : consultas.filter((c) => c.status === filtroAtivo)
+  )
+    .slice()
+    .sort((a, b) => {
+      const pa = a.prioridade || a.emergencia ? 1 : 0;
+      const pb = b.prioridade || b.emergencia ? 1 : 0;
+      return pb - pa;
+    });
+
+  function obterTituloHeader(): string {
+    if (isAdmin()) return '📋 Todas as Consultas';
+    if (isMedico()) return '📅 Minha Agenda';
+    return '📋 Minhas Consultas';
+  }
+
+  function obterMensagemVazia(): string {
+    if (filtroAtivo !== 'todas') {
+      return `Nenhuma consulta ${filtroAtivo}`;
+    }
+    if (isMedico()) {
+      return `Nenhuma consulta para o médico ${usuario?.nome ?? ''}`;
+    }
+    return 'Nenhuma consulta encontrada';
+  }
+
+  if (loading) {
+    return <Loading mensagem="Carregando consultas..." />;
   }
 
   return (
-    <View style={styles.flex}>
+    <View style={styles.container}>
       <View style={styles.header}>
-        <View>
-          <Text style={styles.titulo}>Minhas Consultas</Text>
-          <Text style={styles.subtitulo}>
-            {consultas.length}{' '}
-            {consultas.length === 1 ? 'consulta agendada' : 'consultas agendadas'}
-          </Text>
-        </View>
+        <Text style={styles.headerTitle}>{obterTituloHeader()}</Text>
+        <Text style={styles.headerSubtitle}>
+          {isMedico() && usuario?.especialidade
+            ? `${usuario.especialidade} · ${consultasFiltradas.length} consulta(s)`
+            : `${consultasFiltradas.length} consulta(s) encontrada(s)`}
+        </Text>
+      </View>
+
+      <View style={styles.filtros}>
         <TouchableOpacity
-          style={styles.botaoNova}
-          onPress={() => navigation.navigate('NovaConsulta')}
+          style={[styles.filtro, filtroAtivo === 'todas' && styles.filtroAtivo]}
+          onPress={() => setFiltroAtivo('todas')}
         >
-          <Text style={styles.botaoNovaTexto}>+ Nova</Text>
+          <Text
+            style={[
+              styles.filtroTexto,
+              filtroAtivo === 'todas' && styles.filtroTextoAtivo,
+            ]}
+          >
+            Todas
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.filtro, filtroAtivo === 'agendada' && styles.filtroAtivo]}
+          onPress={() => setFiltroAtivo('agendada')}
+        >
+          <Text
+            style={[
+              styles.filtroTexto,
+              filtroAtivo === 'agendada' && styles.filtroTextoAtivo,
+            ]}
+          >
+            Agendadas
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.filtro, filtroAtivo === 'confirmada' && styles.filtroAtivo]}
+          onPress={() => setFiltroAtivo('confirmada')}
+        >
+          <Text
+            style={[
+              styles.filtroTexto,
+              filtroAtivo === 'confirmada' && styles.filtroTextoAtivo,
+            ]}
+          >
+            Confirmadas
+          </Text>
         </TouchableOpacity>
       </View>
 
-      {carregando ? (
-        <View style={styles.centro}>
-          <ActivityIndicator size="large" color={cores.primaria} />
-        </View>
+      {consultasFiltradas.length === 0 ? (
+        <EmptyState icone="📭" mensagem={obterMensagemVazia()} />
       ) : (
         <FlatList
-          data={consultas}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
+          data={consultasFiltradas}
+          keyExtractor={(item) => item.id.toString()}
+          renderItem={({ item }) => (
+            <ConsultaCard
+              consulta={item}
+              onConfirmar={() => handleConfirmar(item.id)}
+              onCancelar={() => handleCancelar(item.id)}
+              onDetalhes={() => handleDetalhes(item.id)}
+            />
+          )}
           contentContainerStyle={styles.lista}
-          ListEmptyComponent={
-            <View style={styles.centro}>
-              <Text style={styles.vazioTitulo}>Nenhuma consulta agendada</Text>
-              <Text style={styles.vazioTexto}>
-                Toque em “+ Nova” para agendar sua primeira consulta.
-              </Text>
-            </View>
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
         />
       )}
@@ -118,99 +223,55 @@ export default function ConsultasListScreen() {
 }
 
 const styles = StyleSheet.create({
-  flex: {
+  container: {
     flex: 1,
-    backgroundColor: cores.fundo,
+    backgroundColor: '#f5f5f5',
   },
   header: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 4,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#666',
+  },
+  filtros: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 12,
+    padding: 16,
+    gap: 8,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
   },
-  titulo: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: cores.texto,
-  },
-  subtitulo: {
-    fontSize: 14,
-    color: cores.textoSecundario,
-    marginTop: 4,
-  },
-  botaoNova: {
-    backgroundColor: cores.primaria,
-    borderRadius: 10,
+  filtro: {
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#f5f5f5',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
   },
-  botaoNovaTexto: {
-    color: cores.branco,
-    fontWeight: '700',
+  filtroAtivo: {
+    backgroundColor: '#79059C',
+    borderColor: '#79059C',
+  },
+  filtroTexto: {
+    color: '#666',
     fontSize: 14,
+    fontWeight: '500',
+  },
+  filtroTextoAtivo: {
+    color: '#fff',
   },
   lista: {
-    padding: 20,
-    paddingTop: 8,
-    flexGrow: 1,
-  },
-  card: {
-    backgroundColor: cores.card,
-    borderRadius: 12,
     padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: cores.borda,
-  },
-  cardCabecalho: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  cardEspecialidade: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: cores.primariaEscura,
-  },
-  cardHorario: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: cores.primaria,
-  },
-  cardMedico: {
-    fontSize: 15,
-    color: cores.texto,
-    marginTop: 6,
-  },
-  cardData: {
-    fontSize: 14,
-    color: cores.textoSecundario,
-    marginTop: 2,
-  },
-  cardObservacoes: {
-    fontSize: 13,
-    color: cores.textoSecundario,
-    marginTop: 8,
-    fontStyle: 'italic',
-  },
-  centro: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 20,
-  },
-  vazioTitulo: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: cores.texto,
-  },
-  vazioTexto: {
-    fontSize: 14,
-    color: cores.textoSecundario,
-    textAlign: 'center',
-    marginTop: 6,
   },
 });

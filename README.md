@@ -1,86 +1,112 @@
 # Sistema de Consultas Mobile
 
-Aplicativo mobile (React Native + Expo + TypeScript) para cadastro de pacientes
-e agendamento de consultas. Projeto do **Checkpoint 1 — 2º semestre** (Turma
-3ESA), com as três melhorias da aula de **05/05/2026**.
+Aplicativo mobile (React Native + Expo + TypeScript) para cadastro de pacientes,
+agendamento de consultas e **acesso por perfil** (admin, médico e paciente).
+
+Base do **Checkpoint 1** evoluída com a **Aula 25/08/2026 — Mock de Médicos,
+Login por Perfil e Agenda do Médico** (FIAP, Engenharia de Software, turma 3ESA).
 
 ## Participantes (RMs)
 
 - RM554638 — Fabricio Bettarello
 - RM98677 — Enzo Miletta
 
-## Melhorias implementadas
+## O que a aula entregou
 
-### 1. Cadastro de Paciente — `src/screens/CadastroPaciente.tsx`
-- Máscara progressiva de **CPF** (`000.000.000-00`).
-- Máscara progressiva de **telefone** (`(11) 99999-9999` celular / `(11) 3333-4444` fixo).
-- Validação oficial de **CPF** (algoritmo módulo 11 da Receita Federal).
-- Rejeição de CPFs com todos os dígitos iguais (ex.: `111.111.111-11`).
-- Validação de **e-mail** por regex (`texto@dominio.extensao`).
-- **Feedback inline** no `onBlur`: borda vermelha + mensagem abaixo dos campos.
-- Limpeza da mensagem de erro ao digitar novamente.
-- Bloqueio do cadastro com CPF/telefone inválidos (`Alert`).
+1. **Mock central de médicos** (`medicosMock` / `medicosSelectMock`) alinhado ao
+   agendamento (`medicoId` + especialidade), evitando listas duplicadas.
+2. **Login por perfil** (`paciente` / `medico` / `admin`) com stacks de navegação
+   diferentes para cada um (RBAC no mobile).
+3. **Credenciais de teste** por médico na tela de Login (tocar no card preenche
+   e-mail/senha).
+4. **Área do Médico** (`MedicoHomeScreen`) e **agenda filtrada**: o médico só vê
+   as consultas com o seu `medicoId`.
+5. **Estado vazio personalizado**: `Nenhuma consulta para o médico {nome}`.
+6. **Continuidade IoT**: uma emergência de pressão arterial (Estágio 3) cria uma
+   consulta marcada como emergência/prioridade que aparece no topo da agenda do
+   cardiologista (Dr. Roberto Silva).
 
-### 2. Nova Consulta — `src/screens/NovaConsultaScreen.tsx`
-- Tela funcional (não exibe mais "Em Desenvolvimento").
-- Seleção de **especialidade** via modal.
-- Seleção de **médico** filtrado pela especialidade escolhida.
-- Ao trocar a especialidade, o médico selecionado é limpo.
-- Campo de **data** com máscara `DD/MM/AAAA`.
-- Seleção de **horário** em grid de 3 colunas.
-- Campo de **observações** (opcional).
-- Validação dos campos obrigatórios.
-- Persistência via `criarConsulta`.
-- Conversão da data de `DD/MM/AAAA` para `AAAA-MM-DD` antes de salvar.
+## Credenciais de teste
 
-### 3. Lista de Consultas — `src/screens/ConsultasListScreen.tsx`
-- Uso de **`useFocusEffect`** (recarrega ao ganhar foco, não só na montagem).
-- Ao agendar uma consulta e voltar, a lista atualiza automaticamente.
-- `useCallback` com dependência correta de `usuario?.id`.
+| Perfil   | E-mail                     | Senha      |
+|----------|----------------------------|------------|
+| Admin    | `admin@sistema.com`        | `admin123` |
+| Paciente | `joao@email.com`           | `123456`   |
+| Médico   | `roberto.silva@medico.com` | `123456`   |
+
+Os demais médicos seguem o padrão `nome.sobrenome@medico.com` / `123456`
+(veja a lista completa tocando em **Ver Credenciais de Teste** no Login).
+A **Dra. Carla Lima** (`carla.lima@medico.com`) não tem consultas iniciais —
+serve para testar o estado vazio.
 
 ## Estrutura do projeto
 
 ```
-AppMobile/
-├── App.tsx                         # entrada: providers + navegação
-├── src/
-│   ├── context/AuthContext.tsx     # usuário logado (usuario?.id)
-│   ├── navigation/
-│   │   ├── AppNavigator.tsx        # abas + pilha
-│   │   └── types.ts                # tipos das rotas
-│   ├── screens/
-│   │   ├── CadastroPaciente.tsx
-│   │   ├── NovaConsultaScreen.tsx
-│   │   └── ConsultasListScreen.tsx
-│   ├── services/
-│   │   ├── consultasService.ts     # criarConsulta / listarConsultas
-│   │   └── dados.ts                # especialidades, médicos, horários
-│   ├── utils/
-│   │   ├── masks.ts                # máscaras de CPF, telefone, data
-│   │   └── validation.ts           # validação de CPF, e-mail, telefone, data
-│   └── theme.ts                    # paleta de cores
+App.tsx                              # entrada: inicializa dados + providers + navegação
+src/
+├── contexts/AuthContext.tsx         # usuário logado, login/logout, isAdmin(), isMedico()
+├── navigation/index.tsx             # stacks por perfil (admin/medico/paciente)
+├── types/
+│   ├── usuario.ts                   # TipoUsuario, EspecialidadeUsuario, Usuario
+│   ├── statusConsulta.ts            # StatusConsulta
+│   └── index.ts                     # barrel de tipos
+├── interfaces/
+│   ├── medico.ts                    # Especialidade, Medico, MedicoSelect
+│   └── consulta.ts                  # Consulta
+├── services/
+│   ├── mockData.ts                  # médicos e consultas mock
+│   ├── authService.ts              # usuários, login, sync de médicos, credenciais
+│   ├── consultasService.ts         # CRUD + filtro/permissão por perfil
+│   └── index.ts
+├── components/                      # ConsultaCard, Loading, EmptyState
+├── screens/
+│   ├── Login.tsx                    # login + cards de credenciais
+│   ├── HomeScreen.tsx               # home do paciente
+│   ├── MedicoHomeScreen.tsx         # home do médico
+│   ├── AdminScreen.tsx              # painel administrativo
+│   ├── ConsultasListScreen.tsx      # lista filtrada por perfil + empty state
+│   ├── MinhasConsultasScreen.tsx    # consultas do paciente
+│   ├── ConsultaDetalhesScreen.tsx   # detalhes + ações por permissão
+│   ├── NovaConsultaScreen.tsx       # agendamento (usa o mock compartilhado)
+│   ├── AgendamentoScreen.tsx
+│   ├── PressaoArterialScreen.tsx    # monitor de PA (emergência -> agenda do médico)
+│   └── CadastroPacienteScreen.tsx   # criar conta (cadastrarUsuario)
+├── utils/                           # máscaras e validações (CPF, e-mail, telefone, data)
+└── theme.ts                         # paleta de cores (#79059C)
 ```
+
+## Regra de negócio (em uma frase)
+
+`admin` vê tudo; `médico` vê `c.medicoId === usuario.medicoId`; `paciente` vê
+`c.usuarioId === usuario.id`.
 
 ## Como executar
 
-Pré-requisitos: **Node.js 18+** e o app **Expo Go** no celular
-(ou um emulador Android/iOS).
+Pré-requisitos: **Node.js 18+** e o app **Expo Go** no celular (ou um emulador
+Android/iOS).
 
 ```bash
 npm install
 npm start
 ```
 
-Depois, escaneie o QR Code com o app Expo Go, ou pressione `a` (Android),
+Depois escaneie o QR Code com o app Expo Go, ou pressione `a` (Android),
 `i` (iOS) ou `w` (web) no terminal.
+
+> Se o app já tinha dados antigos no AsyncStorage, use **Ver Credenciais de
+> Teste → Limpar TUDO do AsyncStorage** na tela de Login e recarregue (R+R).
 
 ## Como testar
 
-**CPF** — gere CPFs válidos em [4devs](https://www.4devs.com.br/gerador_de_cpf)
-
-CPFs válidos de exemplo: `529.982.247-25`, `184.857.412-37`, `697.382.994-05`.
-
-**Fluxo de atualização da lista:**
-1. Abra "Minhas Consultas" e observe a quantidade atual.
-2. Toque em "+ Nova" e agende uma consulta.
-3. Confirme e volte — a nova consulta aparece na lista sem reiniciar o app.
+1. **Médico:** entre com `roberto.silva@medico.com` → veja a **Área do Médico**
+   e a **Minha Agenda** só com as consultas dele.
+2. **Empty state:** entre com `carla.lima@medico.com` → mensagem
+   `Nenhuma consulta para o médico Dra. Carla Lima`.
+3. **Paciente:** entre com `joao@email.com`, agende em **Nova Consulta** e volte —
+   a lista atualiza sozinha (`useFocusEffect`).
+4. **Emergência IoT:** como paciente, abra **Pressão Arterial**, informe algo como
+   `190 × 130` → crie a emergência e confira que ela aparece no topo da agenda do
+   Dr. Roberto Silva.
+5. **Admin:** entre com `admin@sistema.com` → painel com contadores e todas as
+   consultas.
+```

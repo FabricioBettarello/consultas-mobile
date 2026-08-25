@@ -1,64 +1,315 @@
 /**
- * Serviço de consultas — camada de persistência usando AsyncStorage.
- *
- * Responsável por criar e listar consultas. As telas nunca falam diretamente
- * com o AsyncStorage: sempre passam por aqui.
+ * Consultas Service
+ * Gerencia operações relacionadas a consultas com AsyncStorage.
+ * Filtra consultas baseado no perfil: admin (todas), paciente (suas), médico (da agenda).
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Consulta } from '../interfaces/consulta';
 
-export interface Consulta {
-  id: string;
-  usuarioId: string;
-  especialidade: string;
-  medico: string;
-  /** Data no formato de armazenamento AAAA-MM-DD. */
-  data: string;
-  horario: string;
-  observacoes?: string;
-  criadaEm: string;
+export type OpcoesFiltroConsulta = {
+  usuarioId?: number;
+  isAdmin?: boolean;
+  isMedico?: boolean;
+  medicoId?: number;
+};
+
+class ConsultasService {
+  /** Obtém todas as consultas do AsyncStorage. */
+  private async obterTodasConsultas(): Promise<Consulta[]> {
+    try {
+      const consultasJSON = await AsyncStorage.getItem('@consultas');
+      if (!consultasJSON) return [];
+
+      const consultas = JSON.parse(consultasJSON);
+      return consultas;
+    } catch (error) {
+      console.error('Erro ao obter consultas:', error);
+      return [];
+    }
+  }
+
+  /** Salva consultas no AsyncStorage. */
+  private async salvarConsultas(consultas: Consulta[]): Promise<void> {
+    try {
+      await AsyncStorage.setItem('@consultas', JSON.stringify(consultas));
+    } catch (error) {
+      console.error('Erro ao salvar consultas:', error);
+      throw error;
+    }
+  }
+
+  private temPermissao(consulta: Consulta, opcoes: OpcoesFiltroConsulta): boolean {
+    if (opcoes.isAdmin) return true;
+    if (opcoes.isMedico && opcoes.medicoId != null) {
+      return consulta.medicoId === opcoes.medicoId;
+    }
+    if (opcoes.usuarioId != null) {
+      return consulta.usuarioId === opcoes.usuarioId;
+    }
+    return false;
+  }
+
+  /**
+   * Lista consultas filtradas por perfil.
+   * - Admin: todas
+   * - Médico: apenas consultas com o mesmo medicoId
+   * - Paciente: apenas as que ele agendou (usuarioId)
+   */
+  async listarConsultas(
+    usuarioId?: number,
+    isAdmin: boolean = false,
+    isMedico: boolean = false,
+    medicoId?: number,
+  ): Promise<Consulta[]> {
+    const todasConsultas = await this.obterTodasConsultas();
+
+    if (isAdmin) {
+      return todasConsultas;
+    }
+
+    if (isMedico && medicoId != null) {
+      return todasConsultas.filter((c) => c.medicoId === medicoId);
+    }
+
+    if (usuarioId) {
+      return todasConsultas.filter((c) => c.usuarioId === usuarioId);
+    }
+
+    return [];
+  }
+
+  /**
+   * Obtém uma consulta específica por ID.
+   * Verifica se o usuário tem permissão para ver a consulta.
+   */
+  async obterConsulta(
+    id: number,
+    usuarioId?: number,
+    isAdmin: boolean = false,
+    isMedico: boolean = false,
+    medicoId?: number,
+  ): Promise<Consulta> {
+    const todasConsultas = await this.obterTodasConsultas();
+    const consulta = todasConsultas.find((c) => c.id === id);
+
+    if (!consulta) {
+      throw new Error('Consulta não encontrada');
+    }
+
+    if (!this.temPermissao(consulta, { usuarioId, isAdmin, isMedico, medicoId })) {
+      throw new Error('Você não tem permissão para visualizar esta consulta');
+    }
+
+    return consulta;
+  }
+
+  /** Cria uma nova consulta associada ao usuário logado. */
+  async criarConsulta(consultaData: Omit<Consulta, 'id'>): Promise<Consulta> {
+    const todasConsultas = await this.obterTodasConsultas();
+
+    const novaConsulta: Consulta = {
+      ...consultaData,
+      id: Date.now(), // Usa timestamp como ID
+    };
+
+    todasConsultas.push(novaConsulta);
+    await this.salvarConsultas(todasConsultas);
+
+    return novaConsulta;
+  }
+
+  /** Atualiza o status de uma consulta para "confirmada". */
+  async confirmarConsulta(
+    id: number,
+    usuarioId?: number,
+    isAdmin: boolean = false,
+    isMedico: boolean = false,
+    medicoId?: number,
+  ): Promise<Consulta> {
+    const todasConsultas = await this.obterTodasConsultas();
+    const index = todasConsultas.findIndex((c) => c.id === id);
+
+    if (index === -1) {
+      throw new Error('Consulta não encontrada');
+    }
+
+    if (!this.temPermissao(todasConsultas[index], { usuarioId, isAdmin, isMedico, medicoId })) {
+      throw new Error('Você não tem permissão para modificar esta consulta');
+    }
+
+    if (todasConsultas[index].status !== 'agendada') {
+      throw new Error('Apenas consultas agendadas podem ser confirmadas');
+    }
+
+    todasConsultas[index] = {
+      ...todasConsultas[index],
+      status: 'confirmada',
+    };
+
+    await this.salvarConsultas(todasConsultas);
+    return todasConsultas[index];
+  }
+
+  /** Atualiza o status de uma consulta para "cancelada". */
+  async cancelarConsulta(
+    id: number,
+    usuarioId?: number,
+    isAdmin: boolean = false,
+    isMedico: boolean = false,
+    medicoId?: number,
+  ): Promise<Consulta> {
+    const todasConsultas = await this.obterTodasConsultas();
+    const index = todasConsultas.findIndex((c) => c.id === id);
+
+    if (index === -1) {
+      throw new Error('Consulta não encontrada');
+    }
+
+    if (!this.temPermissao(todasConsultas[index], { usuarioId, isAdmin, isMedico, medicoId })) {
+      throw new Error('Você não tem permissão para modificar esta consulta');
+    }
+
+    if (
+      todasConsultas[index].status !== 'agendada' &&
+      todasConsultas[index].status !== 'confirmada'
+    ) {
+      throw new Error('Apenas consultas agendadas ou confirmadas podem ser canceladas');
+    }
+
+    todasConsultas[index] = {
+      ...todasConsultas[index],
+      status: 'cancelada',
+    };
+
+    await this.salvarConsultas(todasConsultas);
+    return todasConsultas[index];
+  }
+
+  /** Atualiza o status de uma consulta para "realizada" (apenas admin). */
+  async realizarConsulta(id: number, isAdmin: boolean = false): Promise<Consulta> {
+    if (!isAdmin) {
+      throw new Error('Apenas administradores podem marcar consultas como realizadas');
+    }
+
+    const todasConsultas = await this.obterTodasConsultas();
+    const index = todasConsultas.findIndex((c) => c.id === id);
+
+    if (index === -1) {
+      throw new Error('Consulta não encontrada');
+    }
+
+    if (todasConsultas[index].status !== 'confirmada') {
+      throw new Error('Apenas consultas confirmadas podem ser realizadas');
+    }
+
+    todasConsultas[index] = {
+      ...todasConsultas[index],
+      status: 'realizada',
+    };
+
+    await this.salvarConsultas(todasConsultas);
+    return todasConsultas[index];
+  }
+
+  /** Deleta uma consulta (apenas admin). */
+  async deletarConsulta(id: number, isAdmin: boolean = false): Promise<void> {
+    if (!isAdmin) {
+      throw new Error('Apenas administradores podem deletar consultas');
+    }
+
+    const todasConsultas = await this.obterTodasConsultas();
+    const consultasFiltradas = todasConsultas.filter((c) => c.id !== id);
+    await this.salvarConsultas(consultasFiltradas);
+  }
 }
 
-const STORAGE_KEY = '@consultas';
+// Consultas iniciais alinhadas aos médicos do mock (medicosMock / NovaConsulta)
+const CONSULTAS_INICIAIS: Consulta[] = [
+  {
+    id: 1,
+    pacienteId: 2,
+    pacienteNome: 'João Silva',
+    medicoId: 1,
+    medicoNome: 'Dr. Roberto Silva',
+    especialidade: 'Cardiologia',
+    usuarioId: 2,
+    data: '2026-04-25',
+    horario: '14:00',
+    status: 'agendada',
+    observacoes: 'Consulta de rotina',
+    valor: 250,
+  },
+  {
+    id: 2,
+    pacienteId: 2,
+    pacienteNome: 'João Silva',
+    medicoId: 3,
+    medicoNome: 'Dr. João Pereira',
+    especialidade: 'Ortopedia',
+    usuarioId: 2,
+    data: '2026-04-28',
+    horario: '10:30',
+    status: 'confirmada',
+    observacoes: 'Dor no joelho',
+    valor: 300,
+  },
+  {
+    id: 3,
+    pacienteId: 3,
+    pacienteNome: 'Maria Santos',
+    medicoId: 2,
+    medicoNome: 'Dra. Maria Santos',
+    especialidade: 'Dermatologia',
+    usuarioId: 3,
+    data: '2026-04-30',
+    horario: '09:00',
+    status: 'agendada',
+    observacoes: 'Manchas na pele',
+    valor: 200,
+  },
+  {
+    id: 4,
+    pacienteId: 3,
+    pacienteNome: 'Maria Santos',
+    medicoId: 4,
+    medicoNome: 'Dra. Ana Costa',
+    especialidade: 'Clínica Geral',
+    usuarioId: 3,
+    data: '2026-05-05',
+    horario: '15:00',
+    status: 'confirmada',
+    observacoes: 'Consulta preventiva',
+    valor: 280,
+  },
+  {
+    id: 5,
+    pacienteId: 2,
+    pacienteNome: 'João Silva',
+    medicoId: 5,
+    medicoNome: 'Dr. Paulo Oliveira',
+    especialidade: 'Psiquiatria',
+    usuarioId: 2,
+    data: '2026-04-20',
+    horario: '11:00',
+    status: 'realizada',
+    observacoes: 'Dores de cabeça recorrentes',
+    valor: 350,
+  },
+];
 
-/** Lê todas as consultas persistidas (sem filtro). */
-async function lerTodas(): Promise<Consulta[]> {
-  const raw = await AsyncStorage.getItem(STORAGE_KEY);
-  return raw ? (JSON.parse(raw) as Consulta[]) : [];
+/** Inicializa consultas no AsyncStorage se não existirem. */
+export async function inicializarConsultas(): Promise<void> {
+  try {
+    const consultasExistentes = await AsyncStorage.getItem('@consultas');
+
+    if (!consultasExistentes) {
+      await AsyncStorage.setItem('@consultas', JSON.stringify(CONSULTAS_INICIAIS));
+      console.log('Consultas iniciais criadas');
+    }
+  } catch (error) {
+    console.error('Erro ao inicializar consultas:', error);
+  }
 }
 
-/**
- * Lista as consultas de um usuário, ordenadas da mais recente para a mais
- * antiga. Se `usuarioId` não for informado, retorna todas.
- */
-export async function listarConsultas(usuarioId?: string): Promise<Consulta[]> {
-  const todas = await lerTodas();
-  const filtradas = usuarioId
-    ? todas.filter((consulta) => consulta.usuarioId === usuarioId)
-    : todas;
-
-  return filtradas.sort(
-    (a, b) => new Date(b.criadaEm).getTime() - new Date(a.criadaEm).getTime(),
-  );
-}
-
-/**
- * Cria e persiste uma nova consulta.
- * A `data` já deve chegar no formato AAAA-MM-DD.
- */
-export async function criarConsulta(
-  nova: Omit<Consulta, 'id' | 'criadaEm'>,
-): Promise<Consulta> {
-  const todas = await lerTodas();
-
-  const consulta: Consulta = {
-    ...nova,
-    id: Date.now().toString(),
-    criadaEm: new Date().toISOString(),
-  };
-
-  todas.push(consulta);
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(todas));
-
-  return consulta;
-}
+export default new ConsultasService();

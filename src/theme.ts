@@ -1,13 +1,22 @@
 /** Paleta de cores compartilhada entre as telas. */
 export const cores = {
-  primaria: '#2563eb',
-  primariaEscura: '#1e40af',
-  fundo: '#f1f5f9',
+  primaria: '#79059C',
+  primariaEscura: '#5e0479',
+  fundo: '#f5f5f5',
   card: '#ffffff',
-  texto: '#0f172a',
-  textoSecundario: '#64748b',
-  borda: '#cbd5e1',
-  erro: '#dc2626',
+  texto: '#333333',
+  textoSecundario: '#666666',
+  borda: '#dddddd',
+  erro: '#F44336',
   sucesso: '#16a34a',
+  aviso: '#f59e0b',
   branco: '#ffffff',
+};
+
+/** Cores por status de consulta (badge). */
+export const coresStatus: Record<string, string> = {
+  agendada: '#2563eb',
+  confirmada: '#16a34a',
+  cancelada: '#F44336',
+  realizada: '#6b7280',
 };
