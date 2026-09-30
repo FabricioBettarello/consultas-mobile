@@ -3,6 +3,8 @@
  *
  * - Aba "Consultas": pilha com a lista de consultas e a tela de nova consulta.
  * - Aba "Cadastro": tela de cadastro de paciente.
+ *
+ * Estilos em src/styles/navigation.styles.ts.
  */
 
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -14,6 +16,7 @@ import CadastroPaciente from '../screens/CadastroPaciente';
 import ConsultasListScreen from '../screens/ConsultasListScreen';
 import NovaConsultaScreen from '../screens/NovaConsultaScreen';
 import { cores } from '../theme';
+import { styles } from '../styles/navigation.styles';
 import type { ConsultasStackParamList, RootTabParamList } from './types';
 
 const Stack = createNativeStackNavigator<ConsultasStackParamList>();
@@ -58,7 +61,7 @@ export default function AppNavigator() {
         component={ConsultasStack}
         options={{
           tabBarIcon: ({ color }) => (
-            <Text style={{ fontSize: 20, color }}>🗓️</Text>
+            <Text style={[styles.tabIcone, { color }]}>🗓️</Text>
           ),
         }}
       />
@@ -67,7 +70,7 @@ export default function AppNavigator() {
         component={CadastroPaciente}
         options={{
           tabBarIcon: ({ color }) => (
-            <Text style={{ fontSize: 20, color }}>👤</Text>
+            <Text style={[styles.tabIcone, { color }]}>👤</Text>
           ),
         }}
       />

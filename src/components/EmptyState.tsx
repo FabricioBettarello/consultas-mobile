@@ -1,10 +1,12 @@
 /**
  * EmptyState - estado vazio com ícone (emoji) e mensagem personalizada.
+ *
+ * Estilos em src/styles/emptyState.styles.ts.
  */
 
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { cores } from '../theme';
+import { Text, View } from 'react-native';
+import { styles } from '../styles/emptyState.styles';
 
 type EmptyStateProps = {
   icone?: string;
@@ -19,22 +21,3 @@ export default function EmptyState({ icone = '📭', mensagem }: EmptyStateProps
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 40,
-  },
-  icone: {
-    fontSize: 56,
-    marginBottom: 16,
-  },
-  mensagem: {
-    fontSize: 16,
-    color: cores.textoSecundario,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-});

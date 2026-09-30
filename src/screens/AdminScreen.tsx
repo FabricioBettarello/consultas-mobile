@@ -3,6 +3,8 @@
  *
  * Mostra um resumo (contadores por status) de TODAS as consultas e dá acesso
  * à lista completa. Só é acessível ao perfil "admin".
+ *
+ * Estilos em src/styles/admin.styles.ts.
  */
 
 import React, { useState, useCallback } from 'react';
@@ -10,7 +12,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
-  StyleSheet,
   TouchableOpacity,
   ScrollView,
   Alert,
@@ -19,6 +20,7 @@ import { useAuth } from '../contexts/AuthContext';
 import consultasService from '../services/consultasService';
 import { Consulta } from '../interfaces/consulta';
 import { cores } from '../theme';
+import { styles } from '../styles/admin.styles';
 
 type AdminScreenProps = {
   navigation: any;
@@ -82,47 +84,3 @@ export default function AdminScreen({ navigation }: AdminScreenProps) {
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: cores.fundo },
-  content: { padding: 20 },
-  titulo: { fontSize: 24, fontWeight: 'bold', color: cores.texto, marginTop: 8 },
-  subtitulo: { fontSize: 15, color: cores.textoSecundario, marginTop: 4, marginBottom: 20 },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  statCard: {
-    backgroundColor: cores.card,
-    borderRadius: 12,
-    borderTopWidth: 4,
-    padding: 16,
-    width: '47%',
-    alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-  },
-  statValor: { fontSize: 30, fontWeight: 'bold' },
-  statRotulo: { fontSize: 13, color: cores.textoSecundario, marginTop: 4 },
-  botao: {
-    backgroundColor: cores.primaria,
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 24,
-  },
-  botaoTexto: { color: cores.branco, fontWeight: 'bold', fontSize: 16 },
-  logout: {
-    marginTop: 12,
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: cores.erro,
-  },
-  logoutTexto: { color: cores.erro, fontWeight: 'bold', fontSize: 16 },
-});

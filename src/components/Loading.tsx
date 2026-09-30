@@ -1,10 +1,13 @@
 /**
  * Loading - indicador de carregamento centralizado com mensagem opcional.
+ *
+ * Estilos em src/styles/loading.styles.ts.
  */
 
 import React from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
 import { cores } from '../theme';
+import { styles } from '../styles/loading.styles';
 
 type LoadingProps = {
   mensagem?: string;
@@ -18,18 +21,3 @@ export default function Loading({ mensagem }: LoadingProps) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: cores.fundo,
-    padding: 24,
-  },
-  texto: {
-    marginTop: 12,
-    fontSize: 15,
-    color: cores.textoSecundario,
-  },
-});

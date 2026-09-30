@@ -4,6 +4,8 @@
  * - Verifica permissão via consultasService.obterConsulta (admin/médico/paciente).
  * - Paciente/Médico: podem confirmar/cancelar quando o status permite.
  * - Admin: pode marcar como realizada e deletar.
+ *
+ * Estilos em src/styles/consultaDetalhes.styles.ts.
  */
 
 import React, { useState, useCallback } from 'react';
@@ -11,7 +13,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
-  StyleSheet,
   TouchableOpacity,
   ScrollView,
   Alert,
@@ -22,6 +23,7 @@ import { Consulta } from '../interfaces/consulta';
 import { Loading } from '../components';
 import { cores, coresStatus } from '../theme';
 import { dataParaBR } from '../utils/masks';
+import { styles } from '../styles/consultaDetalhes.styles';
 
 type ConsultaDetalhesScreenProps = {
   navigation: any;
@@ -184,7 +186,7 @@ export default function ConsultaDetalhesScreen({
       <View style={styles.acoes}>
         {podeConfirmar && (
           <TouchableOpacity
-            style={[styles.botao, { backgroundColor: cores.sucesso }]}
+            style={[styles.botao, styles.botaoConfirmar]}
             onPress={handleConfirmar}
           >
             <Text style={styles.botaoTexto}>Confirmar</Text>
@@ -192,7 +194,7 @@ export default function ConsultaDetalhesScreen({
         )}
         {podeCancelar && (
           <TouchableOpacity
-            style={[styles.botao, { backgroundColor: cores.erro }]}
+            style={[styles.botao, styles.botaoCancelar]}
             onPress={handleCancelar}
           >
             <Text style={styles.botaoTexto}>Cancelar</Text>
@@ -200,7 +202,7 @@ export default function ConsultaDetalhesScreen({
         )}
         {podeRealizar && (
           <TouchableOpacity
-            style={[styles.botao, { backgroundColor: cores.primaria }]}
+            style={[styles.botao, styles.botaoRealizar]}
             onPress={handleRealizar}
           >
             <Text style={styles.botaoTexto}>Marcar como realizada</Text>
@@ -227,51 +229,3 @@ function Linha({ rotulo, valor }: { rotulo: string; valor: string }) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: cores.fundo },
-  content: { padding: 16 },
-  emergenciaBanner: {
-    backgroundColor: cores.erro,
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 12,
-    alignItems: 'center',
-  },
-  emergenciaTexto: { color: cores.branco, fontWeight: 'bold' },
-  card: {
-    backgroundColor: cores.card,
-    borderRadius: 12,
-    padding: 20,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-  },
-  badge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 12,
-    marginBottom: 16,
-  },
-  badgeTexto: { color: cores.branco, fontWeight: '600', fontSize: 13 },
-  linha: {
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    paddingVertical: 12,
-  },
-  linhaRotulo: { fontSize: 13, color: cores.textoSecundario, marginBottom: 2 },
-  linhaValor: { fontSize: 16, color: cores.texto, fontWeight: '500' },
-  acoes: { marginTop: 20, gap: 10 },
-  botao: {
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  botaoDeletar: {
-    backgroundColor: '#8b0000',
-  },
-  botaoTexto: { color: cores.branco, fontWeight: 'bold', fontSize: 15 },
-});

@@ -58,7 +58,9 @@ src/
 │   ├── authService.ts              # usuários, login, sync de médicos, credenciais
 │   ├── consultasService.ts         # CRUD + filtro/permissão por perfil
 │   └── index.ts
-├── components/                      # ConsultaCard, Loading, EmptyState
+├── components/                      # ConsultaCard, Loading, EmptyState, Input
+├── styles/                          # um <nome>.styles.ts por tela/componente (só StyleSheet.create)
+│   └── index.ts                     # barrel dos estilos
 ├── screens/
 │   ├── Login.tsx                    # login + cards de credenciais
 │   ├── HomeScreen.tsx               # home do paciente

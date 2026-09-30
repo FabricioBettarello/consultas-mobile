@@ -4,6 +4,8 @@
  * Filtra por usuarioId via consultasService e permite agendar uma nova consulta.
  * Recarrega ao ganhar foco (useFocusEffect), então uma nova consulta aparece
  * automaticamente ao voltar do agendamento.
+ *
+ * Estilos em src/styles/minhasConsultas.styles.ts.
  */
 
 import React, { useState, useCallback } from 'react';
@@ -11,7 +13,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
-  StyleSheet,
   FlatList,
   TouchableOpacity,
   RefreshControl,
@@ -21,7 +22,7 @@ import { useAuth } from '../contexts/AuthContext';
 import consultasService from '../services/consultasService';
 import { Consulta } from '../interfaces/consulta';
 import { ConsultaCard, Loading, EmptyState } from '../components';
-import { cores } from '../theme';
+import { styles } from '../styles/minhasConsultas.styles';
 
 type MinhasConsultasScreenProps = {
   navigation: any;
@@ -117,17 +118,3 @@ export default function MinhasConsultasScreen({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: cores.fundo },
-  novaButton: {
-    backgroundColor: cores.primaria,
-    margin: 16,
-    marginBottom: 0,
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  novaButtonTexto: { color: cores.branco, fontWeight: 'bold', fontSize: 16 },
-  lista: { padding: 16 },
-});
